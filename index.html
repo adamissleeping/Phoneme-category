@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sound Tilt Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- MediaPipe Face Mesh -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f4f9ff;
+      padding: 10px;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    #word {
+      font-size: 48px;
+      margin: 20px;
+    }
+
+    #feedback {
+      font-size: 24px;
+      margin-top: 15px;
+      min-height: 40px;
+    }
+
+    #explanation {
+      font-size: 18px;
+      color: #444;
+      margin-top: 10px;
+    }
+
+    video {
+      width: 240px;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+
+    .hint {
+      font-size: 16px;
+      color: #666;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>🎧 Sound Tilt Game</h1>
+  <p>Listen and read the word.</p>
+  <p>Tilt your head 👈 LEFT or 👉 RIGHT</p>
+
+  <div id="word">rain</div>
+
+  <div id="feedback"></div>
+  <div id="explanation"></div>
+
+  <div class="hint">
+    👈 LEFT = /eɪ/ (ai) &nbsp;&nbsp; | &nbsp;&nbsp; 👉 RIGHT = /i:/ (ee)
+  </div>
+
+  <video id="video" autoplay muted playsinline></video>
+
+  <script>
+    // =========================
+    // WORD DATA
+    // =========================
+
+    const words = [
+      { text: "rain", category: "A", sound: "/eɪ/ (ai)" },
+      { text: "tail", category: "A", sound: "/eɪ/ (ai)" },
+      { text: "train", category: "A", sound: "/eɪ/ (ai)" },
+      { text: "sail", category: "A", sound: "/eɪ/ (ai)" },
+
+      { text: "see", category: "B", sound: "/i:/ (ee)" },
+      { text: "bee", category: "B", sound: "/i:/ (ee)" },
+      { text: "tree", category: "B", sound: "/i:/ (ee)" },
+      { text: "feet", category: "B", sound: "/i:/ (ee)" }
+    ];
+
+    let currentWord = {};
+    let answered = false;
+
+    function nextWord() {
+      answered = false;
+      document.getElementById("feedback").textContent = "";
+      document.getElementById("explanation").textContent = "";
+
+      currentWord = words[Math.floor(Math.random() * words.length)];
+      document.getElementById("word").textContent = currentWord.text;
+
+      // Optional speech (browser TTS)
+      const utterance = new SpeechSynthesisUtterance(currentWord.text);
+      utterance.lang = "en-US";
+      speechSynthesis.speak(utterance);
+    }
+
+    nextWord();
+
+    // =========================
+    // FACE MESH SETUP
+    // =========================
+
+    const videoElement = document.getElementById("video");
+
+    const faceMesh = new FaceMesh({
+      locateFile: (file) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    faceMesh.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await faceMesh.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
+
+    camera.start();
+
+    // =========================
+    // HEAD TILT LOGIC
+    // =========================
+
+    function onResults(results) {
+      if (!results.multiFaceLandmarks || answered) return;
+
+      const landmarks = results.multiFaceLandmarks[0];
+
+      // Left and right eye landmarks
+      const leftEye = landmarks[33];
+      const rightEye = landmarks[263];
+
+      // Calculate head tilt angle
+      const dx = rightEye.x - leftEye.x;
+      const dy = rightEye.y - leftEye.y;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      // Threshold to avoid accidental movement
+      if (angle > 10) {
+        checkAnswer("RIGHT");
+      } else if (angle < -10) {
+        checkAnswer("LEFT");
+      }
+    }
+
+    // =========================
+    // ANSWER CHECKING
+    // =========================
+
+    function checkAnswer(direction) {
+      answered = true;
+
+      let chosenCategory = direction === "LEFT" ? "A" : "B";
+
+      if (chosenCategory === currentWord.category) {
+        document.getElementById("feedback").textContent = "✅ Correct!";
+        document.getElementById("explanation").textContent =
+          `${currentWord.text} has the ${currentWord.sound} sound. Good listening! 🎉`;
+      } else {
+        document.getElementById("feedback").textContent = "❌ Try again";
+        document.getElementById("explanation").textContent =
+          `${currentWord.text} does not sound right. Listen again carefully. 👂`;
+      }
+
+      setTimeout(nextWord, 3000);
+    }
+  </script>
+
+</body>
+</html>
